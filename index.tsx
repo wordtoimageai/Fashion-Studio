@@ -163,6 +163,8 @@ const App: React.FC = () => {
   const [activeFilter, setActiveFilter] = useState<FilterType>('none');
   const [blurAmount, setBlurAmount] = useState(0);
   const [isPortraitActive, setIsPortraitActive] = useState(false);
+  const [foregroundCache, setForegroundCache] = useState<Record<string, string>>({});
+  const [isGeneratingForeground, setIsGeneratingForeground] = useState(false);
   const [customColor, setCustomColor] = useState('#6366f1');
   const [colorIntensity, setColorIntensity] = useState(0);
   const [variations, setVariations] = useState<string[]>([]);
@@ -275,12 +277,42 @@ const App: React.FC = () => {
     addToWorkspaceHistory(resultImage, activeFilter, variations, blurAmount, isPortraitActive, customColor, colorIntensity);
   };
 
-  const handlePortraitToggle = () => {
+  const handlePortraitToggle = async () => {
+    if (!resultImage) return;
     const nextPortraitState = !isPortraitActive;
+    
+    if (nextPortraitState && !foregroundCache[resultImage]) {
+      setIsGeneratingForeground(true);
+      try {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash-image',
+          contents: { parts: [
+            { inlineData: { mimeType: 'image/png', data: cleanBase64(resultImage) } },
+            { text: "Remove the background from this image. Keep only the person in the foreground." },
+          ]},
+        });
+        let foundImage = false;
+        for (const part of response.candidates?.[0]?.content?.parts || []) {
+          if (part.inlineData) {
+            const fgImage = `data:image/png;base64,${cleanBase64(part.inlineData.data)}`;
+            setForegroundCache(prev => ({ ...prev, [resultImage]: fgImage }));
+            foundImage = true;
+            break;
+          }
+        }
+        if (!foundImage) throw new Error("Failed to generate foreground.");
+      } catch (err: any) {
+        setError("Error generating portrait mode: " + (err.message || "Unknown error"));
+        setIsGeneratingForeground(false);
+        return; // Don't toggle if failed
+      }
+      setIsGeneratingForeground(false);
+    }
+
     setIsPortraitActive(nextPortraitState);
     const nextBlurAmount = (nextPortraitState && blurAmount === 0) ? 8 : blurAmount;
     setBlurAmount(nextBlurAmount);
-    if (nextPortraitState) setShowBlurControl(true);
     addToWorkspaceHistory(resultImage, activeFilter, variations, nextBlurAmount, nextPortraitState, customColor, colorIntensity);
   };
 
@@ -724,9 +756,11 @@ const App: React.FC = () => {
                 <button onClick={() => setIsComparing(true)} disabled={!personImage || !resultImage} className={`px-3 py-1 text-[10px] font-black uppercase rounded-full ${isComparing ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400'}`}>Compare</button>
               </div>
               <button onClick={() => openCropper('result')} disabled={!resultImage} className="p-2 text-slate-400 hover:text-indigo-600" title="Crop Result"><i className="fas fa-crop-alt"></i></button>
-              <button onClick={() => { setShowColorControl(!showColorControl); setShowStyleControl(false); setShowBlurControl(false); }} disabled={!resultImage} className={`p-2 rounded-lg ${showColorControl ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-indigo-600'}`}><i className="fas fa-palette"></i></button>
-              <button onClick={() => { setShowStyleControl(!showStyleControl); setShowColorControl(false); setShowBlurControl(false); }} disabled={!resultImage || isStyling} className={`p-2 rounded-lg ${showStyleControl ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-indigo-600'}`}><i className="fas fa-paintbrush"></i></button>
-              <button onClick={handlePortraitToggle} disabled={!resultImage} className={`p-2 rounded-lg ${isPortraitActive ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-indigo-600'}`}><i className="fas fa-user-circle"></i></button>
+              <button onClick={() => { setShowColorControl(!showColorControl); setShowStyleControl(false); }} disabled={!resultImage} className={`p-2 rounded-lg ${showColorControl ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-indigo-600'}`}><i className="fas fa-palette"></i></button>
+              <button onClick={() => { setShowStyleControl(!showStyleControl); setShowColorControl(false); }} disabled={!resultImage || isStyling} className={`p-2 rounded-lg ${showStyleControl ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-indigo-600'}`}><i className="fas fa-paintbrush"></i></button>
+              <button onClick={handlePortraitToggle} disabled={!resultImage || isGeneratingForeground} className={`p-2 rounded-lg ${isPortraitActive ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-indigo-600'}`}>
+                {isGeneratingForeground ? <i className="fas fa-circle-notch animate-spin"></i> : <i className="fas fa-user-circle"></i>}
+              </button>
               <button onClick={handleShare} disabled={!resultImage || isSharing} className="p-2 text-slate-400 hover:text-indigo-600">{isSharing ? <i className="fas fa-circle-notch animate-spin"></i> : <i className="fas fa-share-alt"></i>}</button>
               <button onClick={handleDownload} disabled={!resultImage} className="p-2 text-slate-400 hover:text-indigo-600"><i className="fas fa-download"></i></button>
             </div>
@@ -781,10 +815,10 @@ const App: React.FC = () => {
             </div>
           )}
 
-          {showBlurControl && resultImage && isPortraitActive && (
+          {isPortraitActive && resultImage && !showColorControl && !showStyleControl && (
             <div className="mb-6 bg-slate-50 p-4 rounded-2xl border border-slate-100 flex items-center space-x-4 z-10">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">Blur</span>
               <input type="range" min="0" max="20" value={blurAmount} onChange={(e) => handleBlurChange(parseInt(e.target.value))} onMouseUp={commitBlur} className="w-full h-1.5 bg-slate-200 rounded-lg accent-indigo-600" />
-              <button onClick={() => setShowBlurControl(false)} className="text-slate-400 font-bold text-[10px]">Done</button>
             </div>
           )}
 
@@ -800,11 +834,14 @@ const App: React.FC = () => {
                   <div className="relative h-full"><img src={ensureDataUrl(personImage)!} className="w-full h-full object-cover" alt="Before" /><div className="absolute top-4 left-4 bg-black/50 text-white text-[10px] font-black px-3 py-1.5 rounded-full uppercase">Before</div></div>
                 )}
                 <div className="relative h-full overflow-hidden">
-                  <img src={resultImage} className="w-full h-full object-cover" style={{ filter: FILTERS.find(f => f.id === activeFilter)?.filterStr || 'none' }} alt="After" />
-                  {colorIntensity > 0 && <div className="absolute inset-0 pointer-events-none" style={{ backgroundColor: customColor, opacity: colorIntensity / 100, mixBlendMode: 'color' }} />}
-                  {isPortraitActive && blurAmount > 0 && (
-                    <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: `url(${resultImage})`, backgroundSize: 'cover', backgroundPosition: 'center', filter: `blur(${blurAmount}px)`, maskImage: 'radial-gradient(circle at center, transparent 20%, black 85%)', WebkitMaskImage: 'radial-gradient(circle at center, transparent 20%, black 85%)' }} />
+                  <img src={resultImage} className="w-full h-full object-cover" style={{ filter: `${FILTERS.find(f => f.id === activeFilter)?.filterStr || 'none'} ${(isPortraitActive && blurAmount > 0 && foregroundCache[resultImage]) ? `blur(${blurAmount}px)` : ''}`.trim() }} alt="After" />
+                  
+                  {isPortraitActive && blurAmount > 0 && foregroundCache[resultImage] && (
+                    <img src={foregroundCache[resultImage]} className="absolute inset-0 w-full h-full object-cover pointer-events-none" style={{ filter: FILTERS.find(f => f.id === activeFilter)?.filterStr || 'none' }} alt="Foreground" />
                   )}
+
+                  {colorIntensity > 0 && <div className="absolute inset-0 pointer-events-none" style={{ backgroundColor: customColor, opacity: colorIntensity / 100, mixBlendMode: 'color' }} />}
+                  
                   {!isComparing && (
                     <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center bg-white/90 backdrop-blur-md p-1.5 rounded-full shadow-2xl">
                       {FILTERS.map((f) => (

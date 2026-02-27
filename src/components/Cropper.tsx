@@ -26,6 +26,16 @@ const Cropper: React.FC<CropperProps> = ({
   const [activeHandle, setActiveHandle] = useState<string | null>(null);
 
   const [currentAspectRatio, setCurrentAspectRatio] = useState(aspectRatio);
+  const [isLocked, setIsLocked] = useState(aspectRatio !== 'original');
+
+  const handleAspectRatioChange = (ratio: 'original' | '1:1' | '3:4' | '4:3' | '16:9') => {
+    setCurrentAspectRatio(ratio);
+    if (ratio !== 'original') {
+      setIsLocked(true);
+    } else {
+      setIsLocked(false);
+    }
+  };
 
   const calculateCropRect = useCallback(() => {
     const img = imgRef.current;
@@ -171,15 +181,43 @@ const Cropper: React.FC<CropperProps> = ({
         if (height < minSize) { height = minSize; if (activeHandle.includes('n')) y = prevRect.y + prevRect.height - minSize; }
 
         // Maintain aspect ratio if set
-        if (currentAspectRatio !== 'original') {
-          const [ratioX, ratioY] = currentAspectRatio.split(':').map(Number);
-          const targetRatio = ratioX / ratioY;
-          const currentRatio = width / height;
+        if (isLocked) {
+          let targetRatio;
+          if (currentAspectRatio === 'original') {
+            targetRatio = img.naturalWidth / img.naturalHeight;
+          } else {
+            const [ratioX, ratioY] = currentAspectRatio.split(':').map(Number);
+            targetRatio = ratioX / ratioY;
+          }
 
-          if (activeHandle.includes('n') || activeHandle.includes('s')) { // Vertical resize
-            width = height * targetRatio;
-          } else { // Horizontal resize
-            height = width / targetRatio;
+          if (activeHandle === 'nw') {
+            if (width / height > targetRatio) {
+              height = width / targetRatio;
+              y = prevRect.y + prevRect.height - height;
+            } else {
+              width = height * targetRatio;
+              x = prevRect.x + prevRect.width - width;
+            }
+          } else if (activeHandle === 'ne') {
+            if (width / height > targetRatio) {
+              height = width / targetRatio;
+              y = prevRect.y + prevRect.height - height;
+            } else {
+              width = height * targetRatio;
+            }
+          } else if (activeHandle === 'sw') {
+            if (width / height > targetRatio) {
+              height = width / targetRatio;
+            } else {
+              width = height * targetRatio;
+              x = prevRect.x + prevRect.width - width;
+            }
+          } else if (activeHandle === 'se') {
+            if (width / height > targetRatio) {
+              height = width / targetRatio;
+            } else {
+              width = height * targetRatio;
+            }
           }
         }
 
@@ -358,20 +396,31 @@ const Cropper: React.FC<CropperProps> = ({
         </div>
 
         <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-          <div className="flex bg-gray-100 p-1 rounded-2xl space-x-1 overflow-x-auto max-w-full">
-            {(['original', '1:1', '3:4', '4:3', '16:9'] as const).map((ratio) => (
-              <button
-                key={ratio}
-                onClick={() => setCurrentAspectRatio(ratio)}
-                className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap ${
-                  currentAspectRatio === ratio
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                {ratio}
-              </button>
-            ))}
+          <div className="flex items-center space-x-2 w-full sm:w-auto overflow-x-auto">
+            <button
+              onClick={() => setIsLocked(!isLocked)}
+              className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
+                isLocked ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+              }`}
+              title={isLocked ? "Unlock Aspect Ratio" : "Lock Aspect Ratio"}
+            >
+              <i className={`fas ${isLocked ? 'fa-lock' : 'fa-unlock'}`}></i>
+            </button>
+            <div className="flex bg-gray-100 p-1 rounded-2xl space-x-1 overflow-x-auto max-w-full">
+              {(['original', '1:1', '3:4', '4:3', '16:9'] as const).map((ratio) => (
+                <button
+                  key={ratio}
+                  onClick={() => handleAspectRatioChange(ratio)}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap ${
+                    currentAspectRatio === ratio
+                      ? 'bg-indigo-600 text-white shadow-md'
+                      : 'text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {ratio}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="flex space-x-3 w-full sm:w-auto">
             <button
