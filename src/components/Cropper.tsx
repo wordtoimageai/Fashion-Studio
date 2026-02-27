@@ -25,6 +25,8 @@ const Cropper: React.FC<CropperProps> = ({
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [activeHandle, setActiveHandle] = useState<string | null>(null);
 
+  const [currentAspectRatio, setCurrentAspectRatio] = useState(aspectRatio);
+
   const calculateCropRect = useCallback(() => {
     const img = imgRef.current;
     const canvas = canvasRef.current;
@@ -38,8 +40,8 @@ const Cropper: React.FC<CropperProps> = ({
     let newCropWidth = imgWidth;
     let newCropHeight = imgHeight;
 
-    if (aspectRatio !== 'original') {
-      const [ratioX, ratioY] = aspectRatio.split(':').map(Number);
+    if (currentAspectRatio !== 'original') {
+      const [ratioX, ratioY] = currentAspectRatio.split(':').map(Number);
       const targetRatio = ratioX / ratioY;
       const imgRatio = imgWidth / imgHeight;
 
@@ -58,7 +60,7 @@ const Cropper: React.FC<CropperProps> = ({
       width: newCropWidth,
       height: newCropHeight,
     });
-  }, [imageSrc, aspectRatio]);
+  }, [imageSrc, currentAspectRatio]);
 
   useEffect(() => {
     const img = new Image();
@@ -169,8 +171,8 @@ const Cropper: React.FC<CropperProps> = ({
         if (height < minSize) { height = minSize; if (activeHandle.includes('n')) y = prevRect.y + prevRect.height - minSize; }
 
         // Maintain aspect ratio if set
-        if (aspectRatio !== 'original') {
-          const [ratioX, ratioY] = aspectRatio.split(':').map(Number);
+        if (currentAspectRatio !== 'original') {
+          const [ratioX, ratioY] = currentAspectRatio.split(':').map(Number);
           const targetRatio = ratioX / ratioY;
           const currentRatio = width / height;
 
@@ -355,21 +357,36 @@ const Cropper: React.FC<CropperProps> = ({
           />
         </div>
 
-        <div className="flex justify-between items-center">
-          <div className="flex space-x-2">
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+          <div className="flex bg-gray-100 p-1 rounded-2xl space-x-1 overflow-x-auto max-w-full">
+            {(['original', '1:1', '3:4', '4:3', '16:9'] as const).map((ratio) => (
+              <button
+                key={ratio}
+                onClick={() => setCurrentAspectRatio(ratio)}
+                className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap ${
+                  currentAspectRatio === ratio
+                    ? 'bg-indigo-600 text-white shadow-md'
+                    : 'text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {ratio}
+              </button>
+            ))}
+          </div>
+          <div className="flex space-x-3 w-full sm:w-auto">
             <button
-              onClick={() => {}}
-              className="px-4 py-2 rounded-full text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200"
+              onClick={onClose}
+              className="flex-1 sm:flex-none px-6 py-3 rounded-full bg-gray-100 text-gray-700 font-bold hover:bg-gray-200 transition-colors"
             >
-              Aspect Ratio: {aspectRatio}
+              Cancel
+            </button>
+            <button
+              onClick={handleCrop}
+              className="flex-1 sm:flex-none px-6 py-3 rounded-full bg-indigo-600 text-white font-bold hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200"
+            >
+              Apply Crop
             </button>
           </div>
-          <button
-            onClick={handleCrop}
-            className="px-6 py-3 rounded-full bg-indigo-600 text-white font-bold hover:bg-indigo-700 transition-colors"
-          >
-            Apply Crop
-          </button>
         </div>
       </div>
     </div>
