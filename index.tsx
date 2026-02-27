@@ -1,5 +1,5 @@
-
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import Cropper from './src/components/Cropper';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI } from '@google/genai';
 
@@ -65,6 +65,14 @@ const COMMON_GARMENTS = [
   { id: 'cg4', label: 'Beige Trench', image: 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?auto=format&fit=crop&w=300&q=80', prompt: 'a classic beige double-breasted trench coat' },
   { id: 'cg5', label: 'Soft Hoodie', image: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?auto=format&fit=crop&w=300&q=80', prompt: 'a comfortable oversized gray drawstring hoodie' },
   { id: 'cg6', label: 'Black Suit', image: 'https://images.unsplash.com/photo-1594932224828-b4b059b6f68e?auto=format&fit=crop&w=300&q=80', prompt: 'a sharp tailored black business suit jacket' },
+];
+
+const ECOMMERCE_SUGGESTIONS = [
+  { id: 'es1', label: 'Floral Maxi Dress', image: 'https://images.unsplash.com/photo-1596752007018-97217a151dc3?auto=format&fit=crop&w=300&q=80', prompt: 'a vibrant floral maxi dress', shopLink: 'https://example.com/floral-maxi-dress' },
+  { id: 'es2', label: 'Casual Denim Jeans', image: 'https://images.unsplash.com/photo-1541099645162-678567119f07?auto=format&fit=crop&w=300&q=80', prompt: 'a pair of relaxed fit blue denim jeans', shopLink: 'https://example.com/denim-jeans' },
+  { id: 'es3', label: 'White Button-Up Shirt', image: 'https://images.unsplash.com/photo-1603254944470-4963866175e1?auto=format&fit=crop&w=300&q=80', prompt: 'a crisp white cotton button-up shirt', shopLink: 'https://example.com/white-shirt' },
+  { id: 'es4', label: 'Striped T-Shirt', image: 'https://images.unsplash.com/photo-1620862590212-e87f642643a6?auto=format&fit=crop&w=300&q=80', prompt: 'a classic navy and white striped t-shirt', shopLink: 'https://example.com/striped-tshirt' },
+  { id: 'es5', label: 'Black Pencil Skirt', image: 'https://images.unsplash.com/photo-1582559535032-475a7c2e0b50?auto=format&fit=crop&w=300&q=80', prompt: 'a sleek black pencil skirt', shopLink: 'https://example.com/pencil-skirt' },
 ];
 
 // --- Utils ---
@@ -148,9 +156,7 @@ const App: React.FC = () => {
   const [cropTarget, setCropTarget] = useState<'person' | 'result' | null>(null);
   const [cropImage, setCropImage] = useState<string | null>(null);
   const [cropAspectRatio, setCropAspectRatio] = useState<AspectRatio>('original');
-  const cropperContainerRef = useRef<HTMLDivElement>(null);
-  // Removed cropperImageRef as we'll use a new Image() object inside applyCrop
-  // const cropperImageRef = useRef<HTMLImageElement>(null); 
+  // const cropperContainerRef = useRef<HTMLDivElement>(null); // Removed as it's now handled within Cropper component
 
   // --- Active Workspace State ---
   const [resultImage, setResultImage] = useState<string | null>(null);
@@ -171,7 +177,7 @@ const App: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const personInputRef = useRef<HTMLInputElement>(null);
   const garmentInputRef = useRef<HTMLInputElement>(null);
-  const styleInputRef = useRef<HTMLInputElement>(null);
+  const styleInputRef = useRef<HTMLInputElement>(null); // Ref for style image upload
 
   // --- Undo/Redo Logic ---
   const addToWorkspaceHistory = (
@@ -236,104 +242,25 @@ const App: React.FC = () => {
     }
   };
 
-  // --- Cropping Implementation ---
-  const openCropper = (target: 'person' | 'result') => {
+  // --- Cropping Logic ---
+  const openCropper = useCallback((target: 'person' | 'result') => {
     const imgSource = target === 'person' ? ensureDataUrl(personImage) : resultImage;
     if (!imgSource) return;
     setCropTarget(target);
     setCropImage(imgSource);
     setCropAspectRatio('original'); // Reset aspect ratio when opening cropper
     setShowCropper(true);
-  };
+  }, [personImage, resultImage]);
 
-  const applyCrop = () => {
-    if (!cropperContainerRef.current || !cropImage) return; // Removed cropperImageRef check
-    
-    const img = new Image();
-    img.src = cropImage;
-    
-    img.onload = () => { // Ensure image is loaded before attempting to crop
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (!ctx) { 
-        setError("Could not create canvas context for cropping.");
-        setShowCropper(false);
-        return;
-      }
-
-      let cropWidth = 0, cropHeight = 0; // Initialize with 0
-      const imgWidth = img.naturalWidth;
-      const imgHeight = img.naturalHeight;
-
-      if (imgWidth === 0 || imgHeight === 0) {
-        setError("Image dimensions are invalid for cropping.");
-        setShowCropper(false);
-        return;
-      }
-
-      switch (cropAspectRatio) {
-        case '1:1':
-          cropWidth = cropHeight = Math.min(imgWidth, imgHeight);
-          break;
-        case '3:4':
-          if (imgWidth / imgHeight > 3 / 4) {
-            cropHeight = imgHeight;
-            cropWidth = imgHeight * (3 / 4);
-          } else {
-            cropWidth = imgWidth;
-            cropHeight = imgWidth * (4 / 3);
-          }
-          break;
-        case '4:3':
-          if (imgWidth / imgHeight > 4 / 3) {
-            cropHeight = imgHeight;
-            cropWidth = imgHeight * (4 / 3);
-          } else {
-            cropWidth = imgWidth;
-            cropHeight = imgWidth * (3 / 4);
-          }
-          break;
-        case '16:9':
-          if (imgWidth / imgHeight > 16 / 9) {
-            cropHeight = imgHeight;
-            cropWidth = imgHeight * (16 / 9);
-          } else {
-            cropWidth = imgWidth;
-            cropHeight = imgWidth * (9 / 16);
-          }
-          break;
-        default: // 'original'
-          cropWidth = imgWidth;
-          cropHeight = imgHeight;
-      }
-
-      // Ensure crop dimensions are positive integers
-      cropWidth = Math.max(1, Math.floor(cropWidth));
-      cropHeight = Math.max(1, Math.floor(cropHeight));
-
-      const startX = Math.max(0, Math.floor((imgWidth - cropWidth) / 2));
-      const startY = Math.max(0, Math.floor((imgHeight - cropHeight) / 2));
-
-      canvas.width = cropWidth;
-      canvas.height = cropHeight;
-      ctx.drawImage(img, startX, startY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
-      
-      const croppedDataUrl = canvas.toDataURL('image/png');
-      
-      if (cropTarget === 'person') {
-        setPersonImage(cleanBase64(croppedDataUrl));
-      } else {
-        addToWorkspaceHistory(croppedDataUrl, activeFilter, variations, blurAmount, isPortraitActive, customColor, colorIntensity);
-      }
-
-      setShowCropper(false);
-    };
-    img.onerror = (e) => {
-      console.error("Error loading image for cropping:", e);
-      setError("Failed to load image for cropping. Please try again.");
-      setShowCropper(false);
-    };
-  };
+  const handleApplyCrop = useCallback((croppedDataUrl: string) => {
+    if (!cropTarget) return;
+    if (cropTarget === 'person') {
+      setPersonImage(cleanBase64(croppedDataUrl));
+    } else {
+      addToWorkspaceHistory(croppedDataUrl, activeFilter, variations, blurAmount, isPortraitActive, customColor, colorIntensity);
+    }
+    setShowCropper(false);
+  }, [cropTarget, activeFilter, variations, blurAmount, isPortraitActive, customColor, colorIntensity]);
 
   // --- Existing Logic ---
   const handleFilterChange = (filter: FilterType) => {
@@ -383,6 +310,18 @@ const App: React.FC = () => {
     }
   };
 
+  const selectEcommerceGarment = async (item: typeof ECOMMERCE_SUGGESTIONS[0]) => {
+    setError(null);
+    try {
+      const base64 = await urlToBase64(item.image); // Use item.image as the source for the try-on
+      setGarmentImage(base64);
+      setGarmentPrompt(item.prompt); // Update prompt for context
+    } catch (err) {
+      setError("Failed to load e-commerce garment image.");
+    }
+  };
+
+
   const generateGarmentImage = async () => {
     if (!garmentPrompt) {
       setError("Please provide a description of the garment you'd like to create.");
@@ -425,7 +364,7 @@ const App: React.FC = () => {
         model: 'gemini-2.5-flash-image',
         contents: { parts: [
           { inlineData: { mimeType: 'image/png', data: contentImageBase64 } },
-          { inlineData: { mimeType: 'image/jpeg', data: styleBase64 } },
+          { inlineData: { mimeType: 'image/jpeg', data: styleBase64 } }, // Assuming style images are typically JPEG or can be converted.
           { text: "Apply the artistic style of the second image to the content of the first image." }
         ]},
       });
@@ -433,15 +372,16 @@ const App: React.FC = () => {
       for (const part of response.candidates?.[0]?.content?.parts || []) {
         if (part.inlineData) {
           const stylizedImage = `data:image/png;base64,${part.inlineData.data}`;
+          // Make the stylized image the new current result and add to variations
           addToWorkspaceHistory(stylizedImage, activeFilter, [...variations, stylizedImage], blurAmount, isPortraitActive, customColor, colorIntensity);
           foundImage = true;
-          setShowStyleControl(false);
+          setShowStyleControl(false); // Close style control after applying
           break;
         }
       }
       if (!foundImage) setError("Model failed to stylize the image.");
     } catch (err: any) {
-      setError("Style transfer error: " + err.message);
+      setError("Style transfer error: " + (err.message || "Unknown error"));
     } finally {
       setIsStyling(false);
     }
@@ -593,6 +533,18 @@ const App: React.FC = () => {
   };
 
   // --- Page Renderers ---
+  const renderCropper = () => {
+    if (!cropImage || !cropTarget) return null;
+    return (
+      <Cropper
+        imageSrc={cropImage}
+        aspectRatio={cropAspectRatio}
+        onCrop={handleApplyCrop}
+        onClose={() => setShowCropper(false)}
+      />
+    );
+  };
+
   const renderStudio = () => (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in fade-in duration-500">
       <div className="lg:col-span-5 space-y-6">
@@ -622,7 +574,7 @@ const App: React.FC = () => {
               </div>
             ) : personImage ? (
               <div className="w-full h-full relative">
-                <img src={ensureDataUrl(personImage)!} className="w-full h-full object-cover" />
+                <img src={ensureDataUrl(personImage)!} className="w-full h-full object-cover" alt="Your Photo" />
                 {isRemovingBackground && <div className="absolute inset-0 bg-white/40 flex items-center justify-center"><span className="bg-white px-4 py-2 rounded-full shadow-lg text-xs font-bold">Removing Background...</span></div>}
               </div>
             ) : (
@@ -635,51 +587,120 @@ const App: React.FC = () => {
           </div>
         </div>
 
+        {/* Select Garment Section - Redesigned */}
         <div className="bg-white rounded-3xl p-6 shadow-xl border border-slate-100">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-gray-800 flex items-center">
-              <span className="w-6 h-6 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center text-xs mr-2">2</span>
-              Select Garment
-            </h2>
-            <div className="flex space-x-2">
+          <h2 className="text-lg font-bold text-gray-800 flex items-center mb-6">
+            <span className="w-6 h-6 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center text-xs mr-2">2</span>
+            Select Garment
+          </h2>
+
+          {/* Current Garment Display */}
+          <div className="h-40 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 overflow-hidden relative flex items-center justify-center group transition-all duration-300 mb-6">
+            {isGeneratingGarment ? (
+              <div className="text-center space-y-2">
+                <i className="fas fa-magic text-indigo-500 text-2xl animate-pulse"></i>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Generating Garment...</p>
+              </div>
+            ) : garmentImage ? (
+              <img src={ensureDataUrl(garmentImage)!} className="w-full h-full object-contain p-2" alt="Selected Garment" />
+            ) : (
+              <div className="text-center p-4 text-slate-400 transition-transform group-hover:scale-105">
+                <i className="fas fa-cloud-upload-alt text-3xl mb-2 opacity-20 group-hover:opacity-40"></i>
+                <p className="text-xs font-medium">Upload, generate, or select a garment</p>
+              </div>
+            )}
+            {garmentImage && !isGeneratingGarment && <button onClick={() => setGarmentImage(null)} className="absolute top-2 right-2 bg-black/50 text-white w-6 h-6 rounded-full text-xs hover:bg-black/70 transition-colors"><i className="fas fa-times"></i></button>}
+          </div>
+
+          {/* Upload Your Own */}
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-3 px-1">
+              <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Your Files</span>
+              <button onClick={() => garmentInputRef.current?.click()} className="text-[10px] font-black uppercase text-indigo-600 hover:underline">Upload Image</button>
               <input type="file" ref={garmentInputRef} hidden accept="image/*" onChange={(e) => handleFileChange(e, 'garment')} />
             </div>
+            {/* The main garment display acts as the primary upload target too */}
           </div>
-          <div className="space-y-6">
-            <div onClick={() => !garmentImage && garmentInputRef.current?.click()} className={`h-40 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 overflow-hidden relative flex items-center justify-center group transition-all duration-300 ${!garmentImage ? 'cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/30' : ''}`}>
-              {isGeneratingGarment ? (
-                <div className="text-center space-y-2">
-                  <i className="fas fa-magic text-indigo-500 text-2xl animate-pulse"></i>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Generating Garment...</p>
-                </div>
-              ) : garmentImage ? (
-                <img src={ensureDataUrl(garmentImage)!} className="w-full h-full object-contain p-2" />
-              ) : (
-                <div className="text-center p-4 text-slate-400">
-                  <i className="fas fa-cloud-upload-alt text-3xl mb-2 opacity-20"></i>
-                  <p className="text-xs font-medium">Click to upload your own garment</p>
-                </div>
-              )}
-              {garmentImage && !isGeneratingGarment && <button onClick={() => setGarmentImage(null)} className="absolute top-2 right-2 bg-black/50 text-white w-6 h-6 rounded-full text-xs hover:bg-black/70 transition-colors"><i className="fas fa-times"></i></button>}
+
+          {/* Design with AI */}
+          <div className="mb-6 space-y-2">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">AI Garment Factory</span>
+              <span className="text-[10px] text-slate-300">Generate New</span>
             </div>
-            <div className="flex space-x-3 overflow-x-auto pb-2 scrollbar-hide">
+            <div className="flex space-x-2">
+              <div className="relative flex-1">
+                <input 
+                  type="text" value={garmentPrompt} onChange={(e) => setGarmentPrompt(e.target.value)} 
+                  placeholder="E.g. 'a blue floral dress'..." 
+                  className="block w-full pl-4 pr-3 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 transition-all outline-none"
+                />
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none">
+                  <i className="fas fa-pen-nib text-xs"></i>
+                </div>
+              </div>
+              <button 
+                onClick={generateGarmentImage}
+                disabled={isGeneratingGarment || !garmentPrompt}
+                className={`px-4 rounded-xl shadow-md transition-all flex items-center justify-center ${isGeneratingGarment || !garmentPrompt ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95 shadow-indigo-100'}`}
+                title="Generate with AI"
+              >
+                {isGeneratingGarment ? <i className="fas fa-circle-notch animate-spin"></i> : <i className="fas fa-wand-magic"></i>}
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Picks / Essentials */}
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-3 px-1">
+               <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Essentials</span>
+               <span className="text-[10px] text-slate-300">Quick Select</span>
+            </div>
+            <div className="flex space-x-3 overflow-x-auto pb-2 scrollbar-hide mask-fade-right">
               {COMMON_GARMENTS.map((g) => (
-                <button key={g.id} onClick={() => selectCommonGarment(g)} className={`flex-shrink-0 relative w-16 h-16 rounded-2xl overflow-hidden border-2 transition-all ${garmentPrompt === g.prompt ? 'border-indigo-600 ring-2 ring-indigo-100' : 'border-slate-100'}`} title={g.label}>
-                  <img src={g.image} className="w-full h-full object-cover" />
+                <button 
+                  key={g.id} 
+                  onClick={() => selectCommonGarment(g)}
+                  className={`flex-shrink-0 group relative w-16 h-16 rounded-2xl overflow-hidden border-2 transition-all transform active:scale-95 ${garmentPrompt === g.prompt ? 'border-indigo-600 ring-2 ring-indigo-100' : 'border-slate-100 hover:border-indigo-200'}`}
+                  title={g.label}
+                >
+                  <img src={g.image} className="w-full h-full object-cover transition-transform group-hover:scale-110" alt={g.label} />
+                  <div className="absolute inset-0 bg-black/5 group-hover:bg-transparent transition-colors"></div>
                 </button>
               ))}
             </div>
-            <div className="space-y-2">
-              <div className="flex space-x-2">
-                <input type="text" value={garmentPrompt} onChange={(e) => setGarmentPrompt(e.target.value)} placeholder="E.g. 'a blue floral dress'..." className="block w-full pl-4 pr-3 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none" />
-                <button onClick={() => garmentInputRef.current?.click()} className="px-4 rounded-xl shadow-md bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"><i className="fas fa-image"></i></button>
-                <button onClick={generateGarmentImage} disabled={isGeneratingGarment || !garmentPrompt} className="px-4 rounded-xl shadow-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:bg-slate-100 disabled:text-slate-300">
-                  {isGeneratingGarment ? <i className="fas fa-circle-notch animate-spin"></i> : <i className="fas fa-wand-magic"></i>}
-                </button>
-              </div>
+          </div>
+
+          {/* Shop the Trends (New E-commerce Suggestions) */}
+          <div>
+            <div className="flex items-center justify-between mb-3 px-1">
+              <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Shop the Trends</span>
+              <span className="text-[10px] text-slate-300">Curated by AI</span>
+            </div>
+            <div className="flex space-x-3 overflow-x-auto pb-2 scrollbar-hide mask-fade-right">
+              {ECOMMERCE_SUGGESTIONS.map((g) => (
+                <div key={g.id} className="flex-shrink-0 group relative w-24 h-24 rounded-2xl overflow-hidden border-2 border-slate-100 hover:border-indigo-200 transition-all transform active:scale-95">
+                  <img src={g.image} className="w-full h-full object-cover transition-transform group-hover:scale-110" alt={g.label} />
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+                    <button
+                      onClick={() => selectEcommerceGarment(g)}
+                      className="bg-white text-indigo-600 text-[10px] font-black px-3 py-1.5 rounded-full uppercase shadow-md hover:bg-indigo-50 transition-colors"
+                    >
+                      Try On
+                    </button>
+                     <a href={g.shopLink} target="_blank" rel="noopener noreferrer"
+                       className="ml-2 bg-indigo-600 text-white text-[10px] font-black px-3 py-1.5 rounded-full uppercase shadow-md hover:bg-indigo-700 transition-colors"
+                     >
+                      Shop
+                     </a>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
+
+
         {error && <div className="bg-red-50 text-red-600 p-4 rounded-2xl text-sm flex items-start space-x-2"><i className="fas fa-exclamation-circle mt-0.5"></i><span>{error}</span></div>}
         <button onClick={generateTryOn} disabled={isGenerating || isRemovingBackground} className={`w-full py-4 rounded-2xl font-bold text-lg shadow-lg flex items-center justify-center space-x-2 ${isGenerating ? 'bg-slate-200 text-slate-500' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}>
           {isGenerating ? <><i className="fas fa-circle-notch animate-spin"></i><span>Designing...</span></> : <><i className="fas fa-sparkles"></i><span>Generate Variations</span></>}
@@ -723,16 +744,40 @@ const App: React.FC = () => {
 
           {showStyleControl && resultImage && (
             <div className="mb-6 bg-slate-50 p-6 rounded-[2rem] border border-slate-100 flex flex-col space-y-4 z-10">
-              <div className="flex space-x-3 overflow-x-auto pb-2 scrollbar-hide">
+              <div className="flex items-center justify-between mb-3 px-1">
+                <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Style Presets</span>
+                <span className="text-[10px] text-slate-300">Quick Select</span>
+              </div>
+              <div className="flex space-x-3 overflow-x-auto pb-2 scrollbar-hide mask-fade-right">
                 {STYLE_PRESETS.map((p) => (
-                  <button key={p.id} onClick={() => selectStylePreset(p.url)} className={`flex-shrink-0 w-20 h-20 rounded-2xl overflow-hidden border-2 ${styleReference && p.url.includes(styleReference.slice(0, 10)) ? 'border-indigo-600' : 'border-transparent opacity-60'}`}><img src={p.url} className="w-full h-full object-cover" /></button>
+                  <button 
+                    key={p.id} 
+                    onClick={() => selectStylePreset(p.url)} 
+                    className={`flex-shrink-0 w-20 h-20 rounded-2xl overflow-hidden border-2 ${styleReference === (cleanBase64(p.url) || null) ? 'border-indigo-600 ring-2 ring-indigo-100' : 'border-slate-100 hover:border-indigo-200 opacity-80'}`}
+                    title={p.label}
+                  >
+                    <img src={p.url} className="w-full h-full object-cover" alt={p.label} />
+                  </button>
                 ))}
               </div>
+              <div className="flex items-center justify-between mt-4 mb-3 px-1">
+                <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Custom Style</span>
+                <button onClick={() => styleInputRef.current?.click()} className="text-[10px] font-black uppercase text-indigo-600 hover:underline">Upload Image</button>
+                <input type="file" ref={styleInputRef} hidden accept="image/*" onChange={handleStyleFileChange} />
+              </div>
               {styleReference && (
-                <button onClick={applyStyleTransfer} disabled={isStyling} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold text-xs">
-                  {isStyling ? 'Stylizing...' : 'Apply Art Style'}
-                </button>
+                <div className="flex items-center space-x-3 mb-4">
+                  <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-indigo-600 ring-2 ring-indigo-100 flex-shrink-0">
+                    <img src={ensureDataUrl(styleReference)!} className="w-full h-full object-cover" alt="Selected Style" />
+                  </div>
+                  <span className="text-sm text-slate-600">Selected custom style.</span>
+                  <button onClick={() => setStyleReference(null)} className="ml-auto text-slate-400 hover:text-red-500 text-xs"><i className="fas fa-times"></i></button>
+                </div>
               )}
+              <button onClick={applyStyleTransfer} disabled={isStyling || !resultImage || !styleReference} className={`w-full bg-indigo-600 text-white py-3 rounded-xl font-bold text-xs ${isStyling ? 'bg-slate-200 text-slate-500' : 'hover:bg-indigo-700 active:scale-95'}`}>
+                {isStyling ? <><i className="fas fa-circle-notch animate-spin mr-2"></i>Stylizing...</> : 'Apply Art Style'}
+              </button>
+              <button onClick={() => setShowStyleControl(false)} className="text-slate-400 font-bold uppercase text-[10px] mt-2">Done</button>
             </div>
           )}
 
@@ -752,10 +797,10 @@ const App: React.FC = () => {
             ) : resultImage ? (
               <div className={`w-full h-full relative ${isComparing ? 'grid grid-cols-2 gap-0.5' : ''}`}>
                 {isComparing && (
-                  <div className="relative h-full"><img src={ensureDataUrl(personImage)!} className="w-full h-full object-cover" /><div className="absolute top-4 left-4 bg-black/50 text-white text-[10px] font-black px-3 py-1.5 rounded-full uppercase">Before</div></div>
+                  <div className="relative h-full"><img src={ensureDataUrl(personImage)!} className="w-full h-full object-cover" alt="Before" /><div className="absolute top-4 left-4 bg-black/50 text-white text-[10px] font-black px-3 py-1.5 rounded-full uppercase">Before</div></div>
                 )}
                 <div className="relative h-full overflow-hidden">
-                  <img src={resultImage} className="w-full h-full object-cover" style={{ filter: FILTERS.find(f => f.id === activeFilter)?.filterStr || 'none' }} />
+                  <img src={resultImage} className="w-full h-full object-cover" style={{ filter: FILTERS.find(f => f.id === activeFilter)?.filterStr || 'none' }} alt="After" />
                   {colorIntensity > 0 && <div className="absolute inset-0 pointer-events-none" style={{ backgroundColor: customColor, opacity: colorIntensity / 100, mixBlendMode: 'color' }} />}
                   {isPortraitActive && blurAmount > 0 && (
                     <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: `url(${resultImage})`, backgroundSize: 'cover', backgroundPosition: 'center', filter: `blur(${blurAmount}px)`, maskImage: 'radial-gradient(circle at center, transparent 20%, black 85%)', WebkitMaskImage: 'radial-gradient(circle at center, transparent 20%, black 85%)' }} />
@@ -780,14 +825,16 @@ const App: React.FC = () => {
         </div>
 
         {variations.length > 0 && !isGenerating && !isStyling && (
-          <div className="bg-white rounded-3xl p-6 shadow-xl border border-slate-100 flex space-x-3 overflow-x-auto scrollbar-hide">
-            <h3 className="text-sm font-bold text-gray-700 mb-4 flex items-center w-full">
+          <div className="bg-white rounded-3xl p-6 shadow-xl border border-slate-100 ">
+            <h3 className="text-sm font-bold text-gray-700 mb-4 flex items-center">
               <i className="fas fa-layer-group text-indigo-600 mr-2"></i>
               Style Variations
             </h3>
-            {variations.map((v, idx) => (
-              <div key={idx} onClick={() => selectVariation(v)} className={`flex-shrink-0 w-24 aspect-[3/4] rounded-xl overflow-hidden cursor-pointer border-2 ${resultImage === v ? 'border-indigo-600 scale-105' : 'border-transparent opacity-70'}`}><img src={v} className="w-full h-full object-cover" /></div>
-            ))}
+            <div className="flex space-x-3 overflow-x-auto pb-2 scrollbar-hide">
+              {variations.map((v, idx) => (
+                <div key={idx} onClick={() => selectVariation(v)} className={`flex-shrink-0 w-24 aspect-[3/4] rounded-xl overflow-hidden cursor-pointer border-2 ${resultImage === v ? 'border-indigo-600 scale-105' : 'border-transparent opacity-70'}`}><img src={v} className="w-full h-full object-cover" alt={`Variation ${idx + 1}`} /></div>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -803,7 +850,7 @@ const App: React.FC = () => {
         {TREND_DATA.map((trend) => (
           <div key={trend.id} className="group bg-white rounded-[2rem] overflow-hidden shadow-lg border border-slate-100">
             <div className="relative aspect-[4/5] overflow-hidden">
-              <img src={trend.image} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+              <img src={trend.image} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" alt={trend.title} />
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-6">
                 <button onClick={() => goToStudio(trend.image, trend.title)} className="w-full bg-white py-3 rounded-xl font-bold text-sm">Try This Look</button>
               </div>
@@ -824,7 +871,7 @@ const App: React.FC = () => {
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
           {history.map((item) => (
             <div key={item.id} className="group relative aspect-[3/4] rounded-[2rem] overflow-hidden shadow-md border border-slate-100">
-              <img src={item.url} className="w-full h-full object-cover" />
+              <img src={item.url} className="w-full h-full object-cover" alt="History item" />
               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-4">
                 <button onClick={() => { addToWorkspaceHistory(item.url, 'none', [item.url]); setCurrentPage('studio'); }} className="w-full bg-white py-2.5 rounded-xl font-bold text-xs">View in Studio</button>
               </div>
@@ -856,53 +903,7 @@ const App: React.FC = () => {
         </footer>
       </main>
 
-      {/* Cropping Modal Overlay */}
-      {showCropper && (
-        <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-4 animate-in fade-in duration-300">
-          <div className="w-full max-w-4xl flex flex-col h-full max-h-[85vh]">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-white font-bold text-xl flex items-center"><i className="fas fa-crop-alt mr-3 text-indigo-400"></i> Adjust Framing</h3>
-              <button onClick={() => setShowCropper(false)} className="text-slate-400 hover:text-white transition-colors"><i className="fas fa-times text-xl"></i></button>
-            </div>
-            
-            <div ref={cropperContainerRef} className="flex-1 bg-slate-900 rounded-3xl overflow-hidden relative border border-white/10 flex items-center justify-center">
-              {/* Dynamic Crop Overlay Visualizer */}
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-                <div className={`border-2 border-indigo-500 shadow-[0_0_0_1000px_rgba(0,0,0,0.6)] transition-all duration-300 relative`} style={{
-                  aspectRatio: cropAspectRatio === 'original' ? 'auto' : cropAspectRatio.replace(':', '/'),
-                  width: cropAspectRatio === 'original' ? '80%' : 'auto',
-                  height: cropAspectRatio === 'original' ? '80%' : 'auto',
-                  maxHeight: '90%',
-                  maxWidth: '90%'
-                }}>
-                   {/* Corner Handles */}
-                   <div className="absolute -top-1 -left-1 w-3 h-3 bg-indigo-500 rounded-full"></div>
-                   <div className="absolute -top-1 -right-1 w-3 h-3 bg-indigo-500 rounded-full"></div>
-                   <div className="absolute -bottom-1 -left-1 w-3 h-3 bg-indigo-500 rounded-full"></div>
-                   <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-indigo-500 rounded-full"></div>
-                   {/* Rule of Thirds Grid */}
-                   <div className="absolute inset-0 flex"><div className="w-1/3 border-r border-white/20 h-full"></div><div className="w-1/3 border-r border-white/20 h-full"></div></div>
-                   <div className="absolute inset-0 flex flex-col"><div className="h-1/3 border-b border-white/20 w-full"></div><div className="h-1/3 border-b border-white/20 w-full"></div></div>
-                </div>
-              </div>
-              {/* Removed ref={cropperImageRef} from here as we create a new Image() object inside applyCrop */}
-              <img src={cropImage || ''} className="max-w-[95%] max-h-[95%] object-contain opacity-40 select-none" alt="Image to crop" />
-            </div>
-
-            <div className="mt-8 flex flex-col sm:flex-row items-center justify-between gap-6">
-              <div className="flex bg-slate-800 p-1.5 rounded-2xl border border-white/5 space-x-1">
-                {(['original', '1:1', '3:4', '4:3', '16:9'] as AspectRatio[]).map((ratio) => (
-                  <button key={ratio} onClick={() => setCropAspectRatio(ratio)} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${cropAspectRatio === ratio ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}>{ratio}</button>
-                ))}
-              </div>
-              <div className="flex items-center space-x-4 w-full sm:w-auto">
-                <button onClick={() => setShowCropper(false)} className="px-8 py-3 rounded-2xl font-bold text-slate-400 hover:text-white hover:bg-white/5 transition-all">Cancel</button>
-                <button onClick={applyCrop} className="flex-1 sm:flex-none px-10 py-3 bg-indigo-600 text-white rounded-2xl font-bold shadow-xl shadow-indigo-900/40 hover:bg-indigo-700 active:scale-95 transition-all">Apply Crop</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {showCropper && renderCropper()}
 
       <div className="md:hidden fixed bottom-0 left-0 right-0 glass-panel flex justify-around py-4 z-50">
         <button onClick={() => setCurrentPage('studio')} className={`flex flex-col items-center ${currentPage === 'studio' ? 'text-indigo-600' : 'text-slate-400'}`}><i className="fas fa-magic"></i><span className="text-[10px] font-bold">Studio</span></button>
