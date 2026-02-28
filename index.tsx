@@ -58,6 +58,10 @@ const STYLE_PRESETS = [
   { id: 'watercolor', label: 'Watercolor', url: 'https://images.unsplash.com/photo-1541339907198-e08759dfc3ef?auto=format&fit=crop&w=200&q=80' },
 ];
 
+const PREDEFINED_PROMPTS = [
+  "T-shirt", "Jeans", "Dress", "Jacket", "Sweater", "Suit", "Hoodie", "Skirt"
+];
+
 const COMMON_GARMENTS = [
   { id: 'cg1', label: 'Leather Jacket', image: 'https://images.unsplash.com/photo-1551028711-031cda28351a?auto=format&fit=crop&w=300&q=80', prompt: 'a classic black leather biker jacket' },
   { id: 'cg2', label: 'Denim Shirt', image: 'https://images.unsplash.com/photo-1589310243389-96a5483213a8?auto=format&fit=crop&w=300&q=80', prompt: 'a light blue denim button-down shirt' },
@@ -145,7 +149,6 @@ const App: React.FC = () => {
   const [isRemovingBackground, setIsRemovingBackground] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [isComparing, setIsComparing] = useState(false);
-  const [showBlurControl, setShowBlurControl] = useState(false);
   const [showStyleControl, setShowStyleControl] = useState(false);
   const [showColorControl, setShowColorControl] = useState(false);
   const [styleReference, setStyleReference] = useState<string | null>(null);
@@ -598,11 +601,28 @@ const App: React.FC = () => {
               <input type="file" ref={personInputRef} hidden accept="image/*" onChange={(e) => handleFileChange(e, 'person')} />
             </div>
           </div>
-          <div className="aspect-[3/4] rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 overflow-hidden relative flex items-center justify-center">
+          <div 
+            className="aspect-[3/4] rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 overflow-hidden relative flex items-center justify-center cursor-pointer hover:border-indigo-300 hover:bg-indigo-50 transition-colors group"
+            onClick={() => !personImage && !useCamera && personInputRef.current?.click()}
+            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (useCamera) return;
+              const file = e.dataTransfer.files?.[0];
+              if (file && file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                  setPersonImage(event.target?.result as string);
+                };
+                reader.readAsDataURL(file);
+              }
+            }}
+          >
             {useCamera ? (
               <div className="w-full h-full relative">
                 <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
-                <button onClick={capturePhoto} className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white w-12 h-12 rounded-full shadow-lg flex items-center justify-center"><div className="w-8 h-8 rounded-full border-2 border-gray-900"></div></button>
+                <button onClick={(e) => { e.stopPropagation(); capturePhoto(); }} className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white w-12 h-12 rounded-full shadow-lg flex items-center justify-center hover:scale-105 transition-transform"><div className="w-8 h-8 rounded-full border-2 border-gray-900"></div></button>
               </div>
             ) : personImage ? (
               <div className="w-full h-full relative">
@@ -610,12 +630,12 @@ const App: React.FC = () => {
                 {isRemovingBackground && <div className="absolute inset-0 bg-white/40 flex items-center justify-center"><span className="bg-white px-4 py-2 rounded-full shadow-lg text-xs font-bold">Removing Background...</span></div>}
               </div>
             ) : (
-              <div className="text-center p-6 text-slate-400">
-                <i className="fas fa-user-tie text-4xl mb-3 opacity-20"></i>
-                <p className="text-sm font-medium">Upload portrait or use camera</p>
+              <div className="text-center p-6 text-slate-400 transition-transform group-hover:scale-105">
+                <i className="fas fa-user-tie text-4xl mb-3 opacity-20 group-hover:opacity-40 group-hover:text-indigo-500"></i>
+                <p className="text-sm font-medium group-hover:text-indigo-600">Click or drag to upload portrait</p>
               </div>
             )}
-            {personImage && !useCamera && !isRemovingBackground && <button onClick={() => setPersonImage(null)} className="absolute top-2 right-2 bg-black/50 text-white w-6 h-6 rounded-full text-xs"><i className="fas fa-times"></i></button>}
+            {personImage && !useCamera && !isRemovingBackground && <button onClick={(e) => { e.stopPropagation(); setPersonImage(null); }} className="absolute top-2 right-2 bg-black/50 text-white w-6 h-6 rounded-full text-xs hover:bg-black/70 transition-colors"><i className="fas fa-times"></i></button>}
           </div>
         </div>
 
@@ -627,7 +647,23 @@ const App: React.FC = () => {
           </h2>
 
           {/* Current Garment Display */}
-          <div className="h-40 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 overflow-hidden relative flex items-center justify-center group transition-all duration-300 mb-6">
+          <div 
+            className="h-40 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 overflow-hidden relative flex items-center justify-center group transition-all duration-300 mb-6 cursor-pointer hover:border-indigo-300 hover:bg-indigo-50"
+            onClick={() => !garmentImage && garmentInputRef.current?.click()}
+            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const file = e.dataTransfer.files?.[0];
+              if (file && file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                  setGarmentImage(event.target?.result as string);
+                };
+                reader.readAsDataURL(file);
+              }
+            }}
+          >
             {isGeneratingGarment ? (
               <div className="text-center space-y-2">
                 <i className="fas fa-magic text-indigo-500 text-2xl animate-pulse"></i>
@@ -637,21 +673,27 @@ const App: React.FC = () => {
               <img src={ensureDataUrl(garmentImage)!} className="w-full h-full object-contain p-2" alt="Selected Garment" />
             ) : (
               <div className="text-center p-4 text-slate-400 transition-transform group-hover:scale-105">
-                <i className="fas fa-cloud-upload-alt text-3xl mb-2 opacity-20 group-hover:opacity-40"></i>
-                <p className="text-xs font-medium">Upload, generate, or select a garment</p>
+                <i className="fas fa-cloud-upload-alt text-3xl mb-2 opacity-20 group-hover:opacity-40 group-hover:text-indigo-500"></i>
+                <p className="text-xs font-medium group-hover:text-indigo-600">Click or drag to upload garment</p>
               </div>
             )}
-            {garmentImage && !isGeneratingGarment && <button onClick={() => setGarmentImage(null)} className="absolute top-2 right-2 bg-black/50 text-white w-6 h-6 rounded-full text-xs hover:bg-black/70 transition-colors"><i className="fas fa-times"></i></button>}
+            {garmentImage && !isGeneratingGarment && <button onClick={(e) => { e.stopPropagation(); setGarmentImage(null); }} className="absolute top-2 right-2 bg-black/50 text-white w-6 h-6 rounded-full text-xs hover:bg-black/70 transition-colors"><i className="fas fa-times"></i></button>}
           </div>
 
           {/* Upload Your Own */}
           <div className="mb-6">
             <div className="flex items-center justify-between mb-3 px-1">
               <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Your Files</span>
-              <button onClick={() => garmentInputRef.current?.click()} className="text-[10px] font-black uppercase text-indigo-600 hover:underline">Upload Image</button>
-              <input type="file" ref={garmentInputRef} hidden accept="image/*" onChange={(e) => handleFileChange(e, 'garment')} />
             </div>
-            {/* The main garment display acts as the primary upload target too */}
+            <button 
+              onClick={() => garmentInputRef.current?.click()} 
+              className="w-full py-4 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center text-slate-500 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-600 transition-colors group"
+            >
+              <i className="fas fa-cloud-upload-alt text-2xl mb-2 group-hover:scale-110 transition-transform"></i>
+              <span className="text-xs font-bold uppercase tracking-wider">Upload Garment Image</span>
+              <span className="text-[10px] text-slate-400 mt-1">JPG, PNG up to 5MB</span>
+            </button>
+            <input type="file" ref={garmentInputRef} hidden accept="image/*" onChange={(e) => handleFileChange(e, 'garment')} />
           </div>
 
           {/* Design with AI */}
@@ -679,6 +721,19 @@ const App: React.FC = () => {
               >
                 {isGeneratingGarment ? <i className="fas fa-circle-notch animate-spin"></i> : <i className="fas fa-wand-magic"></i>}
               </button>
+            </div>
+            
+            {/* Pre-defined Prompts */}
+            <div className="flex flex-wrap gap-2 pt-1">
+              {PREDEFINED_PROMPTS.map((prompt) => (
+                <button
+                  key={prompt}
+                  onClick={() => setGarmentPrompt(prompt)}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-colors border border-transparent hover:border-indigo-200"
+                >
+                  {prompt}
+                </button>
+              ))}
             </div>
           </div>
 
